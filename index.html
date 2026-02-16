@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manifestation Mixer</title>
     <style>
-        :root { --primary: #8b5cf6; --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --accent: #38bdf8; --success: #10b981; --danger: #ef4444; }
+        :root { --primary: #8b5cf6; --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --accent: #38bdf8; --success: #10b981; --danger: #ef4444; --warning: #f59e0b; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 20px; line-height: 1.6; }
         .container { max-width: 900px; margin: 0 auto; }
-        h1 { text-align: center; color: var(--primary); margin-bottom: 20px; letter-spacing: 1px; text-transform: uppercase; }
+        h1 { text-align: center; color: var(--primary); margin-bottom: 20px; letter-spacing: 1px; text-transform: uppercase; border-bottom: 2px solid #334155; padding-bottom: 10px; }
         h2 { color: var(--accent); margin-top: 0; font-size: 1.2rem; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 15px; }
         
         .panel { background: var(--panel); padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid #334155; }
@@ -17,16 +17,17 @@
         label { font-weight: bold; width: 140px; color: #cbd5e1; }
         input[type=range] { flex-grow: 1; cursor: pointer; accent-color: var(--primary); }
         
-        button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; transition: 0.2s; }
+        button { background: var(--primary); color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; transition: 0.2s; }
         button:hover { filter: brightness(1.2); }
-        button:disabled { background: #475569; cursor: not-allowed; }
+        button:disabled { background: #475569; cursor: not-allowed; opacity: 0.6; }
         
         .btn-record { background: var(--danger); }
+        .btn-test { background: var(--warning); color: #000; }
         .btn-stop { background: #64748b; }
         .btn-play { background: var(--success); }
         
         select { padding: 8px; border-radius: 4px; background: #0f172a; color: white; border: 1px solid #475569; width: 100%; max-width: 300px; }
-        input[type=text] { padding: 8px; border-radius: 4px; background: #0f172a; color: white; border: 1px solid #475569; }
+        input[type=text] { padding: 8px; border-radius: 4px; background: #0f172a; color: white; border: 1px solid #475569; width: 150px;}
 
         /* Recording List Styles */
         .clip-list { list-style: none; padding: 0; margin: 0; }
@@ -34,7 +35,7 @@
         .clip-item.playing { border-color: var(--success); box-shadow: 0 0 10px rgba(16, 185, 129, 0.2); }
         .clip-name { flex-grow: 1; background: transparent; border: none; color: white; font-size: 1rem; }
         
-        .info-box { background: #0f172a; padding: 15px; border-radius: 8px; font-size: 0.85em; border-left: 4px solid var(--primary); color: #94a3b8; }
+        .info-box { background: #0f172a; padding: 15px; border-radius: 8px; font-size: 0.85em; border-left: 4px solid var(--primary); color: #94a3b8; margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;}
         
         /* Visual Meter */
         .meter-container { width: 100%; height: 6px; background: #334155; border-radius: 3px; overflow: hidden; margin-top: 5px;}
@@ -42,6 +43,13 @@
         
         .blink { animation: blinker 1s linear infinite; }
         @keyframes blinker { 50% { opacity: 0; } }
+
+        /* Master Controls */
+        .master-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: center; }
+        
+        @media (max-width: 600px) {
+            .info-box { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -52,8 +60,11 @@
     <!-- 1. Voice Recorder (Sampler) -->
     <div class="panel">
         <h2>1. Voice Recordings</h2>
-        <p style="font-size: 0.9em; color: #94a3b8;">Record short affirmations. They will appear in the list below. Play them to loop.</p>
-        
+        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <button id="btnTestMic" class="btn-test">🎤 Test Mic (Hold to Hear)</button>
+            <div style="font-size: 0.8em; color: #94a3b8; align-self: center;">(Check levels before recording)</div>
+        </div>
+
         <div class="control-group" style="justify-content: start;">
             <button id="btnRecMic" class="btn-record">● Record New Clip</button>
             <button id="btnStopMic" class="btn-stop" disabled>■ Stop</button>
@@ -67,6 +78,7 @@
             <ul id="clipList" class="clip-list">
                 <!-- Recorded clips will appear here -->
             </ul>
+            <div id="emptyListMsg" style="color: #64748b; text-align: center; font-style: italic;">No recordings yet.</div>
         </div>
     </div>
 
@@ -81,22 +93,30 @@
                     <option value="delta">Delta (Deep Sleep - 2Hz)</option>
                     <option value="theta">Theta (Meditation - 6Hz)</option>
                     <option value="alpha">Alpha (Relaxation - 10Hz)</option>
+                    <option value="beta">Beta (Focus - 20Hz)</option>
+                    <option value="gamma">Gamma (High Energy - 40Hz)</option>
                 </optgroup>
                 <optgroup label="Solfeggio (Pure Tones)">
+                    <option value="174">174Hz (Pain Relief)</option>
+                    <option value="285">285Hz (Healing Tissue)</option>
+                    <option value="396">396Hz (Remove Fear)</option>
                     <option value="417">417Hz (Wipe Negativity)</option>
                     <option value="528">528Hz (Miracles)</option>
                     <option value="639">639Hz (Relationships)</option>
+                    <option value="741">741Hz (Intuition)</option>
+                    <option value="852">852Hz (Spiritual Order)</option>
+                    <option value="963">963Hz (Divine Consciousness)</option>
                 </optgroup>
             </select>
         </div>
         <div class="control-group">
             <label>Base Tone (Hz)</label>
-            <input type="number" id="baseFreq" value="200" style="width: 60px;">
-            <input type="range" id="baseSlider" min="50" max="900" value="200">
+            <input type="number" id="baseFreq" value="200" style="width: 60px; padding: 5px; border-radius: 4px; border:none;">
+            <input type="range" id="baseSlider" min="50" max="963" value="200">
         </div>
         <div class="control-group">
             <label>Beat Diff (Hz)</label>
-            <input type="number" id="beatFreq" value="6" style="width: 60px;">
+            <input type="number" id="beatFreq" value="6" style="width: 60px; padding: 5px; border-radius: 4px; border:none;">
             <input type="range" id="beatSlider" min="0" max="40" step="0.5" value="6">
         </div>
         <div class="control-group">
@@ -110,11 +130,12 @@
         <h2>3. Atmosphere</h2>
         <div class="control-group">
             <label>Soundscape</label>
-            <select id="noiseType" onchange="startAtmosphere(true)">
+            <select id="noiseType" onchange="if(isEnvPlaying) startAtmosphere(true)">
                 <option value="ocean">🌊 Ocean Waves (Dynamic)</option>
                 <option value="rain">🌧️ Real Rain (Crisp)</option>
-                <option value="om">🕉️ Om Drone (Meditative)</option>
+                <option value="pink">🌸 Pink Noise (Balanced)</option>
                 <option value="brown">🟤 Brown Noise (Deep)</option>
+                <option value="white">⚪ White Noise (Static)</option>
             </select>
         </div>
         <div class="control-group">
@@ -123,22 +144,52 @@
         </div>
     </div>
 
-    <!-- 4. Master Export -->
-    <div class="panel" style="text-align: center; border: 2px solid var(--primary);">
-        <h2>4. Export Mix</h2>
-        <p style="font-size: 0.9em;">Set your loops playing, then click below to record the final MP3/WAV.</p>
-        <button id="btnExport" onclick="startExport()" style="width: 250px; padding: 15px; background: var(--success);">💾 Download Master Mix</button>
-        <div id="exportStatus" style="margin-top: 10px; color: var(--accent); font-weight: bold;"></div>
+    <!-- 4. Master Controls -->
+    <div class="panel" style="border: 2px solid var(--primary);">
+        <h2>4. Master Controls</h2>
+        <div class="master-grid">
+            <!-- Preview Environment -->
+            <div>
+                <button id="btnEnvToggle" onclick="toggleEnvironment()" style="width: 100%; padding: 15px;">▶ Start Beats & Atmos</button>
+                <p style="font-size: 0.8em; color: #94a3b8; margin-top:5px;">Preview the background sounds</p>
+            </div>
+            
+            <!-- Export -->
+            <div>
+                <button id="btnExport" onclick="startExport()" style="width: 100%; padding: 15px; background: var(--success);">💾 Download Master Mix</button>
+                <p id="exportStatus" style="font-size: 0.8em; color: var(--accent); margin-top:5px; height: 1.2em;"></p>
+            </div>
+        </div>
     </div>
 
-    <!-- 5. Guide (Moved to Bottom) -->
+    <!-- 5. Guide -->
     <div class="panel">
         <h2>Frequency Guide</h2>
         <div class="info-box">
-            <strong>Binaural Brainwaves:</strong><br>
-            Delta (1-4Hz): Healing/Sleep | Theta (4-8Hz): Meditation/Hypnosis | Alpha (8-14Hz): Relaxation<br><br>
-            <strong>Solfeggio Frequencies:</strong><br>
-            396Hz: Liberate Fear | 417Hz: Facilitate Change | 528Hz: Miracles/DNA | 639Hz: Relationships | 741Hz: Intuition
+            <div>
+                <strong>🧠 Binaural Brainwaves</strong><br>
+                <ul style="padding-left: 20px; margin-top: 5px;">
+                    <li><strong>Delta (1-4Hz):</strong> Deep Healing, Sleep</li>
+                    <li><strong>Theta (4-8Hz):</strong> Meditation, Hypnosis</li>
+                    <li><strong>Alpha (8-14Hz):</strong> Relaxation, Calm</li>
+                    <li><strong>Beta (14-30Hz):</strong> Focus, Alertness</li>
+                    <li><strong>Gamma (30-50Hz):</strong> High Energy, Insight</li>
+                </ul>
+            </div>
+            <div>
+                <strong>✨ Solfeggio Frequencies</strong><br>
+                <ul style="padding-left: 20px; margin-top: 5px;">
+                    <li><strong>174 Hz:</strong> Relieve Pain/Stress</li>
+                    <li><strong>285 Hz:</strong> Heal Tissues</li>
+                    <li><strong>396 Hz:</strong> Remove Fear</li>
+                    <li><strong>417 Hz:</strong> Wipe Negativity</li>
+                    <li><strong>528 Hz:</strong> Miracles (DNA)</li>
+                    <li><strong>639 Hz:</strong> Relationships</li>
+                    <li><strong>741 Hz:</strong> Intuition</li>
+                    <li><strong>852 Hz:</strong> Spiritual Order</li>
+                    <li><strong>963 Hz:</strong> Divine Consciousness</li>
+                </ul>
+            </div>
         </div>
     </div>
 
@@ -152,16 +203,18 @@
     // --- Nodes for Generators ---
     let oscLeft, oscRight, gainBinaural;
     let atmosNode, atmosGain, lfoNode, filterNode; // Atmosphere nodes
-    
+    let isEnvPlaying = false; // Tracks if Beats/Atmos are on
+
     // --- Recorder Vars ---
     let micStream, mediaRecorder, micChunks = [];
     let isRecordingMic = false;
-    let recStartTime;
-    let micInterval;
+    let isTestMicOn = false;
+    let testMicNode, testMicGain;
+    let recStartTime, micInterval;
     let analyser, dataArray;
     
     // --- Clip Management ---
-    let clips = []; // Array of { id, buffer, gainNode, sourceNode, isPlaying }
+    let clips = []; 
     let clipIdCounter = 1;
 
     // --- Master Export Vars ---
@@ -175,7 +228,7 @@
             masterGain = audioCtx.createGain();
             masterGain.connect(audioCtx.destination);
             
-            // Create a Destination for Exporting
+            // Create a Destination for Exporting (Everything connects here)
             mainDestination = audioCtx.createMediaStreamDestination();
             masterGain.connect(mainDestination);
         }
@@ -183,26 +236,67 @@
     }
 
     // ==========================================
-    // 1. MIC RECORDER & CLIP MANAGER
+    // 1. MIC RECORDER & TESTING
     // ==========================================
     
+    const btnTestMic = document.getElementById('btnTestMic');
     const btnRecMic = document.getElementById('btnRecMic');
     const btnStopMic = document.getElementById('btnStopMic');
     const recTimeDisplay = document.getElementById('recTime');
     const micMeter = document.getElementById('micMeter');
 
+    // Test Mic (Pass-through)
+    btnTestMic.onmousedown = async () => {
+        initAudio();
+        try {
+            if(!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            testMicNode = audioCtx.createMediaStreamSource(micStream);
+            testMicGain = audioCtx.createGain();
+            testMicGain.gain.value = 1.0;
+            
+            testMicNode.connect(testMicGain).connect(masterGain);
+            
+            // Visualizer setup if not already active
+            if(!analyser) {
+                analyser = audioCtx.createAnalyser();
+                testMicNode.connect(analyser);
+                visualizeMic();
+            }
+            isTestMicOn = true;
+            btnTestMic.innerText = "🎤 Listening... (Release to Stop)";
+            btnTestMic.style.background = "#22c55e"; // Green
+        } catch (e) { console.error(e); }
+    };
+
+    btnTestMic.onmouseup = () => {
+        if(isTestMicOn) {
+            testMicNode.disconnect();
+            testMicGain.disconnect();
+            isTestMicOn = false;
+            btnTestMic.innerText = "🎤 Test Mic (Hold to Hear)";
+            btnTestMic.style.background = "var(--warning)";
+        }
+    };
+    // Handle touch for mobile
+    btnTestMic.ontouchstart = btnTestMic.onmousedown;
+    btnTestMic.ontouchend = btnTestMic.onmouseup;
+
+    // Record Mic
     btnRecMic.onclick = async () => {
         initAudio();
         try {
-            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            if(!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(micStream);
             micChunks = [];
             
-            // Setup Visualizer
+            // Visualizer Setup
             const source = audioCtx.createMediaStreamSource(micStream);
-            analyser = audioCtx.createAnalyser();
+            if(!analyser) {
+                analyser = audioCtx.createAnalyser();
+                visualizeMic();
+            }
             source.connect(analyser);
-            visualizeMic();
 
             mediaRecorder.ondataavailable = e => micChunks.push(e.data);
             mediaRecorder.onstop = async () => {
@@ -210,9 +304,6 @@
                 const arrayBuffer = await blob.arrayBuffer();
                 const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
                 addClipToList(audioBuffer);
-                
-                // Stop Stream tracks to release mic
-                micStream.getTracks().forEach(t => t.stop());
                 micMeter.style.width = '0%';
             };
 
@@ -223,6 +314,7 @@
             // UI Updates
             btnRecMic.disabled = true;
             btnStopMic.disabled = false;
+            btnTestMic.disabled = true;
             recTimeDisplay.style.opacity = 1;
             micInterval = setInterval(updateRecTimer, 1000);
             
@@ -237,6 +329,7 @@
             isRecordingMic = false;
             btnRecMic.disabled = false;
             btnStopMic.disabled = true;
+            btnTestMic.disabled = false;
             clearInterval(micInterval);
             recTimeDisplay.style.opacity = 0;
             recTimeDisplay.innerText = "00:00";
@@ -251,7 +344,7 @@
     }
 
     function visualizeMic() {
-        if(!isRecordingMic) return;
+        if(!isRecordingMic && !isTestMicOn) return;
         requestAnimationFrame(visualizeMic);
         dataArray = new Uint8Array(analyser.frequencyBinCount);
         analyser.getByteFrequencyData(dataArray);
@@ -261,9 +354,11 @@
         micMeter.style.width = Math.min(100, avg * 2) + "%";
     }
 
+    // --- Clip Manager ---
     function addClipToList(buffer) {
+        document.getElementById('emptyListMsg').style.display = 'none';
         const id = clipIdCounter++;
-        const clip = { id, buffer, name: `Recording ${id}`, isPlaying: false, gainVal: 1.0 };
+        const clip = { id, buffer, name: `Affirmation ${id}`, isPlaying: false, gainVal: 1.0 };
         clips.push(clip);
         renderClipList();
     }
@@ -278,12 +373,12 @@
             
             li.innerHTML = `
                 <button onclick="toggleClip(${clip.id})" class="${clip.isPlaying ? 'btn-stop' : 'btn-play'}">
-                    ${clip.isPlaying ? '❚❚ Pause' : '▶ Play Loop'}
+                    ${clip.isPlaying ? '❚❚ Stop Loop' : '▶ Play Loop'}
                 </button>
                 <input type="text" class="clip-name" value="${clip.name}" onchange="updateClipName(${clip.id}, this.value)">
                 <input type="range" min="0" max="1.5" step="0.1" value="${clip.gainVal}" 
                        oninput="updateClipVolume(${clip.id}, this.value)" style="max-width:80px" title="Volume">
-                <button onclick="deleteClip(${clip.id})" style="background:transparent; color:#ef4444; padding:5px;">✖</button>
+                <button onclick="deleteClip(${clip.id})" style="background:transparent; color:#ef4444; padding:5px; font-size:18px;">✖</button>
             `;
             list.appendChild(li);
         });
@@ -322,12 +417,7 @@
         clip.gainVal = val;
         if(clip.gainNode) clip.gainNode.gain.value = val;
     }
-
-    function updateClipName(id, name) {
-        const clip = clips.find(c => c.id === id);
-        clip.name = name;
-    }
-
+    function updateClipName(id, name) { clips.find(c => c.id === id).name = name; }
     function deleteClip(id) {
         const clip = clips.find(c => c.id === id);
         if(clip.isPlaying && clip.sourceNode) clip.sourceNode.stop();
@@ -336,13 +426,40 @@
     }
 
     // ==========================================
-    // 2. BINAURAL ENGINE
+    // 2. MASTER ENVIRONMENT (Beats + Atmos)
     // ==========================================
     
-    // Start engine automatically if toggled, otherwise just update values
+    function toggleEnvironment() {
+        initAudio();
+        const btn = document.getElementById('btnEnvToggle');
+        
+        if (isEnvPlaying) {
+            // STOP
+            if(oscLeft) { oscLeft.stop(); oscLeft = null; }
+            if(oscRight) { oscRight.stop(); oscRight = null; }
+            if(atmosNode) { atmosNode.stop(); atmosNode = null; }
+            if(lfoNode) { lfoNode.stop(); lfoNode = null; }
+            
+            isEnvPlaying = false;
+            btn.innerText = "▶ Start Beats & Atmos";
+            btn.style.background = "var(--primary)";
+        } else {
+            // START
+            updateBinaural();
+            startAtmosphere();
+            
+            isEnvPlaying = true;
+            btn.innerText = "⏹ Stop Beats & Atmos";
+            btn.style.background = "#64748b";
+        }
+    }
+
     function updateBinaural() {
+        // Only restart if active, or if called from Toggle
+        if(!isEnvPlaying && !oscLeft) return; 
+        
+        // If updating while playing, we just change freq. If not playing, we create.
         if(!oscLeft) {
-            // Initialize if not running
             oscLeft = audioCtx.createOscillator();
             const panLeft = audioCtx.createStereoPanner();
             panLeft.pan.value = -1;
@@ -368,58 +485,31 @@
         oscRight.frequency.value = base + beat;
     }
 
-    // Listeners for Binaural
+    // Controls for sliders
     document.getElementById('baseSlider').oninput = function() {
         document.getElementById('baseFreq').value = this.value;
-        if(oscLeft) updateBinaural();
+        if(isEnvPlaying) updateBinaural();
     };
     document.getElementById('beatSlider').oninput = function() {
         document.getElementById('beatFreq').value = this.value;
-        if(oscLeft) updateBinaural();
+        if(isEnvPlaying) updateBinaural();
     };
     document.getElementById('volBinaural').oninput = function() {
-        if(!oscLeft) { initAudio(); updateBinaural(); }
         if(gainBinaural) gainBinaural.gain.value = this.value;
     };
     
-    function applyPreset() {
-        const val = document.getElementById('presetSelect').value;
-        if(val === 'delta') setFreqs(100, 2);
-        else if(val === 'theta') setFreqs(200, 6);
-        else if(val === 'alpha') setFreqs(200, 10);
-        else if(val === '417') setFreqs(417, 0);
-        else if(val === '528') setFreqs(528, 0);
-        else if(val === '639') setFreqs(639, 0);
-        if(oscLeft) updateBinaural();
-    }
-    
-    function setFreqs(base, beat) {
-        document.getElementById('baseFreq').value = base;
-        document.getElementById('baseSlider').value = base;
-        document.getElementById('beatFreq').value = beat;
-        document.getElementById('beatSlider').value = beat;
-    }
-
     // ==========================================
-    // 3. ATMOSPHERE ENGINE (Advanced)
+    // 3. ATMOSPHERE ENGINE
     // ==========================================
     
     function startAtmosphere(restart = false) {
-        initAudio();
         if(restart && atmosNode) { atmosNode.stop(); if(lfoNode) lfoNode.stop(); }
-        if(atmosNode && !restart) return; // Already playing
+        if(!isEnvPlaying && !restart) return; 
 
         const type = document.getElementById('noiseType').value;
         const bufferSize = audioCtx.sampleRate * 2;
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
         const data = buffer.getChannelData(0);
-
-        // 1. Generate Base Noise
-        if(type === 'om') {
-            // Om is synthesized, not buffer based. Special handling.
-            createOmDrone();
-            return;
-        }
 
         // Pink Noise Gen
         let b0=0, b1=0, b2=0, b3=0, b4=0, b5=0, b6=0;
@@ -443,71 +533,78 @@
         atmosGain = audioCtx.createGain();
         atmosGain.gain.value = document.getElementById('volNoise').value;
 
-        // 2. Processing based on type
         if (type === 'ocean') {
-            // Lowpass + LFO for waves
             filterNode = audioCtx.createBiquadFilter();
             filterNode.type = 'lowpass';
-            filterNode.frequency.value = 400; // Deep rumble
-            
+            filterNode.frequency.value = 400; 
             const waveGain = audioCtx.createGain();
             lfoNode = audioCtx.createOscillator();
             lfoNode.type = 'sine';
-            lfoNode.frequency.value = 0.15; // Slow waves (6-7 seconds)
-            
-            // LFO controls gain
+            lfoNode.frequency.value = 0.15; 
             const lfoStrength = audioCtx.createGain();
             lfoStrength.gain.value = 0.8; 
             lfoNode.connect(lfoStrength).connect(waveGain.gain);
-            
             atmosNode.connect(filterNode).connect(waveGain).connect(atmosGain).connect(masterGain);
             lfoNode.start();
         } 
         else if (type === 'rain') {
-            // Highpass to remove rumble (crisp rain)
             filterNode = audioCtx.createBiquadFilter();
             filterNode.type = 'highpass';
             filterNode.frequency.value = 600; 
             atmosNode.connect(filterNode).connect(atmosGain).connect(masterGain);
         }
-        else {
-            // Brown/Pink raw
+        else if (type === 'white') {
+             // Regen buffer for white noise
+             const wData = buffer.getChannelData(0);
+             for (let i = 0; i < bufferSize; i++) wData[i] = Math.random() * 2 - 1;
+             atmosNode.connect(atmosGain).connect(masterGain);
+        }
+        else { // Pink/Brown
             atmosNode.connect(atmosGain).connect(masterGain);
         }
         
         atmosNode.start();
     }
 
-    function createOmDrone() {
-        // Create 3 Oscillators for a thick chord
-        const freqs = [136.1, 136.6, 135.6]; // Om frequency + detune
-        const merger = audioCtx.createChannelMerger(1);
-        
-        atmosGain = audioCtx.createGain();
-        atmosGain.gain.value = document.getElementById('volNoise').value;
-
-        freqs.forEach(f => {
-            const osc = audioCtx.createOscillator();
-            osc.type = 'sine'; // Sine is smooth
-            osc.frequency.value = f;
-            osc.connect(atmosGain);
-            osc.start();
-            // Track them to stop later if needed (simplified for this demo)
-            // Ideally we'd push to an array. For now, stopping 'om' requires refresh or toggle.
-        });
-        
-        atmosGain.connect(masterGain);
-    }
-
     document.getElementById('volNoise').oninput = function() {
-        if(!atmosGain) { startAtmosphere(); }
         if(atmosGain) atmosGain.gain.value = this.value;
     }
 
+    // ==========================================
+    // 4. PRESETS & EXPORT
+    // ==========================================
 
-    // ==========================================
-    // 4. EXPORT
-    // ==========================================
+    function applyPreset() {
+        const val = document.getElementById('presetSelect').value;
+        if(val === 'custom') return;
+        
+        // Brainwaves
+        if(val === 'delta') setFreqs(100, 2);
+        else if(val === 'theta') setFreqs(200, 6);
+        else if(val === 'alpha') setFreqs(200, 10);
+        else if(val === 'beta') setFreqs(200, 20);
+        else if(val === 'gamma') setFreqs(200, 40);
+        
+        // Solfeggio (Beat = 0)
+        else if(val === '174') setFreqs(174, 0);
+        else if(val === '285') setFreqs(285, 0);
+        else if(val === '396') setFreqs(396, 0);
+        else if(val === '417') setFreqs(417, 0);
+        else if(val === '528') setFreqs(528, 0);
+        else if(val === '639') setFreqs(639, 0);
+        else if(val === '741') setFreqs(741, 0);
+        else if(val === '852') setFreqs(852, 0);
+        else if(val === '963') setFreqs(963, 0);
+        
+        if(isEnvPlaying) updateBinaural();
+    }
+    
+    function setFreqs(base, beat) {
+        document.getElementById('baseFreq').value = base;
+        document.getElementById('baseSlider').value = base;
+        document.getElementById('beatFreq').value = beat;
+        document.getElementById('beatSlider').value = beat;
+    }
     
     function startExport() {
         initAudio();
@@ -515,7 +612,6 @@
         const status = document.getElementById('exportStatus');
 
         if(isExporting) {
-            // STOP Export
             masterRecorder.stop();
             isExporting = false;
             btn.innerText = "💾 Download Master Mix";
@@ -524,8 +620,6 @@
             return;
         }
 
-        // START Export
-        // We record from the mainDestination node where everything meets
         masterRecorder = new MediaRecorder(mainDestination.stream);
         masterChunks = [];
 
@@ -548,7 +642,6 @@
         btn.classList.add('blink');
         status.innerText = "Recording Output... Click Stop to save file.";
     }
-
 </script>
 
 </body>
