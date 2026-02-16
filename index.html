@@ -138,7 +138,6 @@
             <label>Soundscape</label>
             <select id="noiseType" onchange="if(isEnvPlaying) startAtmosphere(true)">
                 <option value="ocean">🌊 Ocean Waves (Dynamic)</option>
-                <option value="rain">🌧️ Real Rain (Crisp)</option>
                 <option value="brown">🟤 Brown Noise (Deep Rumble)</option>
                 <option value="pink">🌸 Pink Noise (Balanced)</option>
             </select>
@@ -158,6 +157,10 @@
                 <p style="font-size: 0.8em; color: #94a3b8; margin-top:5px;">Hear the beats & background</p>
             </div>
             <div>
+                <!-- New File Name Input -->
+                <div style="margin-bottom: 5px;">
+                    <input type="text" id="fileName" value="manifestation_mix" placeholder="Filename" style="width: 100%; text-align: center; box-sizing: border-box; background: #334155; color:white; border:none; padding:5px;">
+                </div>
                 <button id="btnExport" onclick="startExport()" style="width: 100%; padding: 15px; background: var(--success);">💾 Download Master Mix</button>
                 <p id="exportStatus" style="font-size: 0.8em; color: var(--accent); margin-top:5px; height: 1.2em;"></p>
             </div>
@@ -242,13 +245,11 @@
         micSelect.innerHTML = "<option>Scanning...</option>";
         
         try {
-            // 1. Request brief access to get labels
             const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            tempStream.getTracks().forEach(t => t.stop()); // Stop immediately
+            tempStream.getTracks().forEach(t => t.stop()); 
             
-            // 2. Enumerate
             const devices = await navigator.mediaDevices.enumerateDevices();
-            micSelect.innerHTML = ""; // Clear
+            micSelect.innerHTML = ""; 
             
             const audioInputs = devices.filter(device => device.kind === 'audioinput');
             
@@ -295,7 +296,6 @@
     const recTimeDisplay = document.getElementById('recTime');
     const micMeter = document.getElementById('micMeter');
 
-    // Test Mic
     const startTest = async () => {
         initAudio();
         try {
@@ -330,14 +330,12 @@
         }
     };
 
-    // Mouse and Touch listeners for Hold functionality
     btnTestMic.addEventListener('mousedown', startTest);
     btnTestMic.addEventListener('mouseup', stopTest);
     btnTestMic.addEventListener('mouseleave', stopTest);
     btnTestMic.addEventListener('touchstart', (e) => { e.preventDefault(); startTest(); });
     btnTestMic.addEventListener('touchend', (e) => { e.preventDefault(); stopTest(); });
 
-    // Record Mic
     btnRecMic.onclick = async () => {
         initAudio();
         try {
@@ -434,7 +432,7 @@
     }
 
     function toggleClip(id) {
-        initAudio(); // Wake up context
+        initAudio(); 
         const clip = clips.find(c => c.id === id);
         if(!clip) return;
 
@@ -471,11 +469,11 @@
     }
 
     // ==========================================
-    // 3. MASTER ENV (Beats + Atmos)
+    // 3. MASTER ENV
     // ==========================================
     
     function toggleEnvironment() {
-        initAudio(); // Wake up context
+        initAudio();
         const btn = document.getElementById('btnEnvToggle');
         
         if (isEnvPlaying) {
@@ -574,11 +572,6 @@
             atmosNode.connect(filterNode).connect(waveGain).connect(atmosGain).connect(masterGain);
             lfoNode.start();
         } 
-        else if (type === 'rain') {
-            filterNode = audioCtx.createBiquadFilter();
-            filterNode.type = 'highpass'; filterNode.frequency.value = 600; 
-            atmosNode.connect(filterNode).connect(atmosGain).connect(masterGain);
-        }
         else if (type === 'brown') {
              filterNode = audioCtx.createBiquadFilter();
              filterNode.type = 'lowpass'; filterNode.frequency.value = 200; 
@@ -642,7 +635,14 @@
             const blob = new Blob(masterChunks, { 'type' : 'audio/wav; codecs=MS_PCM' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
-            a.href = url; a.download = "manifestation_mix.wav"; a.click();
+            a.href = url; 
+            
+            // File Name Logic
+            const nameInput = document.getElementById('fileName').value || "manifestation_mix";
+            const safeName = nameInput.replace(/[^a-z0-9_\-\.]/gi, '_');
+            a.download = safeName + ".wav";
+            
+            a.click();
             status.innerText = "Download Started!";
         };
         masterRecorder.start();
