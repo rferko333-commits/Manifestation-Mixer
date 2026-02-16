@@ -5,86 +5,99 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manifestation Audio Mixer</title>
     <style>
-        :root { --primary: #8b5cf6; --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; }
+        :root { --primary: #8b5cf6; --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --accent: #38bdf8; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 20px; line-height: 1.6; }
         .container { max-width: 800px; margin: 0 auto; }
-        h1, h2 { text-align: center; color: var(--primary); }
+        h1, h2 { text-align: center; color: var(--primary); margin-bottom: 10px;}
         
-        .panel { background: var(--panel); padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .panel { background: var(--panel); padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid #334155; }
         
         .control-group { margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-        label { font-weight: bold; width: 150px; }
-        input[type=range] { flex-grow: 1; margin: 0 10px; cursor: pointer; }
+        label { font-weight: bold; width: 140px; color: #cbd5e1; }
+        input[type=range] { flex-grow: 1; margin: 0 10px; cursor: pointer; accent-color: var(--primary); }
         
-        button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; transition: 0.2s; margin: 5px; }
-        button:hover { opacity: 0.9; }
-        button.stop { background: #ef4444; }
-        button.record { background: #ef4444; }
-        button.recording { animation: pulse 1.5s infinite; }
+        button { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; transition: 0.2s; margin: 5px; font-weight: bold;}
+        button:hover { filter: brightness(1.2); }
+        button.recording { background: #ef4444; animation: pulse 2s infinite; }
         
-        select { padding: 8px; border-radius: 4px; background: #334155; color: white; border: none; }
+        select { padding: 8px; border-radius: 4px; background: #0f172a; color: white; border: 1px solid #475569; width: 100%; max-width: 300px;}
         
-        .info-box { background: #334155; padding: 15px; border-radius: 8px; font-size: 0.9em; margin-top: 10px; }
+        .info-box { background: #0f172a; padding: 15px; border-radius: 8px; font-size: 0.85em; border-left: 4px solid var(--accent); }
         
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        /* Visual Meter for Mic */
+        .meter-container { width: 100%; height: 6px; background: #334155; border-radius: 3px; margin-top: 10px; overflow: hidden; }
+        .meter-fill { height: 100%; width: 0%; background: #22c55e; transition: width 0.1s; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Manifestation Mixer</h1>
+    <h1>Manifestation Mixer v2</h1>
 
     <!-- 1. The Guide -->
     <div class="panel">
         <h2>Frequency Guide</h2>
         <div class="info-box">
             <strong>Binaural Brainwaves:</strong><br>
-            Delta (1-4Hz): Deep Sleep | Theta (4-8Hz): Meditation/Hypnosis | Alpha (8-14Hz): Relaxation | Beta (14-30Hz): Focus<br><br>
+            Delta (1-4Hz): Healing/Sleep | Theta (4-8Hz): Meditation/Hypnosis | Alpha (8-14Hz): Relaxation | Beta (14-30Hz): Focus<br><br>
             <strong>Solfeggio Frequencies:</strong><br>
-            396Hz: Remove Fear | 417Hz: Facilitate Change | 528Hz: Miracles/DNA | 639Hz: Relationships | 741Hz: Intuition
+            396Hz: Liberate Fear | 417Hz: Facilitate Change | 528Hz: Miracles/DNA | 639Hz: Relationships | 741Hz: Intuition | 852Hz: Spiritual Order
         </div>
     </div>
 
     <!-- 2. Voice / Mic Input -->
     <div class="panel">
         <h2>1. Voice Layer</h2>
-        <p>Record your affirmations. (Headphones recommended to prevent echo).</p>
+        <p style="font-size: 0.9em; color: #94a3b8;">Click button below to enable microphone. Wear headphones to avoid feedback!</p>
         <div class="control-group">
-            <button id="btnRecord" class="record">🎤 Start Recording Mic</button>
-            <span id="recordStatus">Not Recording</span>
+            <button id="btnRecord">🎤 Enable Microphone</button>
+            <div style="flex-grow: 1; text-align: right;">
+                <label>Voice Volume</label>
+            </div>
+            <input type="range" id="volVoice" min="0" max="2" step="0.1" value="1" style="max-width: 150px;">
         </div>
-        <div class="control-group">
-            <label>Voice Volume</label>
-            <input type="range" id="volVoice" min="0" max="2" step="0.1" value="1">
-        </div>
+        <!-- Visual Mic Meter -->
+        <div class="meter-container"><div id="micMeter" class="meter-fill"></div></div>
     </div>
 
     <!-- 3. Binaural Generator -->
     <div class="panel">
         <h2>2. Binaural Beats Engine</h2>
         <div class="control-group">
-            <label>Preset</label>
+            <label>Load Preset</label>
             <select id="presetSelect" onchange="applyPreset()">
-                <option value="custom">Custom Settings</option>
-                <option value="theta">Deep Meditation (Theta 6Hz)</option>
-                <option value="alpha">Relaxed Focus (Alpha 10Hz)</option>
-                <option value="solf528">Miracle Tone (528Hz)</option>
-                <option value="solf417">Clear Negativity (417Hz)</option>
+                <option value="custom">-- Select a Preset --</option>
+                <optgroup label="Brainwaves (Binaural)">
+                    <option value="delta">Delta (Deep Sleep - 2Hz)</option>
+                    <option value="theta">Theta (Meditation - 6Hz)</option>
+                    <option value="alpha">Alpha (Relaxation - 10Hz)</option>
+                    <option value="beta">Beta (Focus - 20Hz)</option>
+                </optgroup>
+                <optgroup label="Solfeggio (Pure Tones)">
+                    <option value="396">396Hz (Remove Fear)</option>
+                    <option value="417">417Hz (Wipe Negativity)</option>
+                    <option value="528">528Hz (Miracles)</option>
+                    <option value="639">639Hz (Relationships)</option>
+                    <option value="741">741Hz (Intuition)</option>
+                    <option value="852">852Hz (Spiritual Order)</option>
+                </optgroup>
             </select>
         </div>
         <div class="control-group">
             <label>Base Tone (Hz)</label>
-            <input type="number" id="baseFreq" value="200" style="width: 60px; padding: 5px;">
+            <input type="number" id="baseFreq" value="200" style="width: 60px; padding: 5px; border-radius: 4px; border: none;">
             <input type="range" id="baseSlider" min="50" max="900" value="200">
         </div>
         <div class="control-group">
             <label>Beat Diff (Hz)</label>
-            <input type="number" id="beatFreq" value="6" style="width: 60px; padding: 5px;">
-            <input type="range" id="beatSlider" min="0.5" max="40" step="0.5" value="6">
+            <input type="number" id="beatFreq" value="6" style="width: 60px; padding: 5px; border-radius: 4px; border: none;">
+            <input type="range" id="beatSlider" min="0" max="40" step="0.5" value="6">
         </div>
         <div class="control-group">
             <label>Beat Volume</label>
-            <input type="range" id="volBinaural" min="0" max="1" step="0.05" value="0.5">
+            <input type="range" id="volBinaural" min="0" max="0.5" step="0.01" value="0.2">
         </div>
     </div>
 
@@ -92,35 +105,42 @@
     <div class="panel">
         <h2>3. Atmosphere</h2>
         <div class="control-group">
-            <label>Noise Type</label>
+            <label>Soundscape</label>
             <select id="noiseType">
-                <option value="brown">Brown Noise (Deep/Rumbling)</option>
-                <option value="pink">Pink Noise (Balanced/Rain-like)</option>
-                <option value="white">White Noise (Static)</option>
+                <option value="rain">🌧️ Generated Rain (Realistic)</option>
+                <option value="brown">🟤 Brown Noise (Deep Rumble)</option>
+                <option value="pink">🌸 Pink Noise (Balanced)</option>
+                <option value="white">⚪ White Noise (Static)</option>
             </select>
         </div>
         <div class="control-group">
             <label>Noise Volume</label>
-            <input type="range" id="volNoise" min="0" max="0.5" step="0.01" value="0.1">
+            <input type="range" id="volNoise" min="0" max="0.6" step="0.01" value="0.2">
         </div>
     </div>
 
     <!-- 5. Master Controls -->
-    <div class="panel" style="text-align: center;">
+    <div class="panel" style="text-align: center; border: 2px solid var(--primary);">
         <h2>Master Control</h2>
-        <button id="btnPlay" onclick="togglePlay()">▶ Play Preview</button>
-        <button id="btnExport" onclick="startExport()">💾 Record & Download Mix</button>
-        <p id="exportStatus" style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;"></p>
+        <div style="margin-bottom: 15px;">
+            <button id="btnPlay" onclick="togglePlay()" style="width: 200px;">▶ Play Preview</button>
+        </div>
+        <div>
+            <button id="btnExport" onclick="startExport()" style="background: #10b981; width: 200px;">💾 Record & Download</button>
+        </div>
+        <p id="exportStatus" style="font-size: 0.9em; margin-top: 10px; color: #38bdf8; min-height: 20px;"></p>
     </div>
 </div>
 
 <script>
     let audioCtx, masterGain;
     let oscLeft, oscRight, panLeft, panRight, gainBinaural;
-    let noiseNode, gainNoise;
-    let micStream, micNode, gainMic;
+    let noiseNode, gainNoise, rainFilter, rainLFO, rainGain;
+    let micStream, micNode, gainMic, analyser, dataArray;
     let isPlaying = false;
+    let isMicActive = false;
     let mediaRecorder, chunks = [];
+    let animationId;
 
     // --- Audio Initialization ---
     function initAudio() {
@@ -129,24 +149,89 @@
             masterGain = audioCtx.createGain();
             masterGain.connect(audioCtx.destination);
         }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
     }
 
-    // --- 1. Binaural Beats Logic ---
+    // --- 1. Mic Logic (Improved) ---
+    document.getElementById('btnRecord').onclick = async function() {
+        initAudio(); // Force Audio Context Awake
+        
+        if (isMicActive) {
+            // Stop Mic
+            if (micStream) micStream.getTracks().forEach(track => track.stop());
+            this.classList.remove('recording');
+            this.innerText = "🎤 Enable Microphone";
+            document.getElementById('micMeter').style.width = "0%";
+            isMicActive = false;
+            cancelAnimationFrame(animationId);
+            return;
+        }
+
+        try {
+            micStream = await navigator.mediaDevices.getUserMedia({ 
+                audio: { 
+                    echoCancellation: false, 
+                    noiseSuppression: false, 
+                    autoGainControl: false 
+                } 
+            });
+            
+            micNode = audioCtx.createMediaStreamSource(micStream);
+            gainMic = audioCtx.createGain();
+            gainMic.gain.value = document.getElementById('volVoice').value;
+            
+            // Visualizer Setup
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            
+            // Connect: Mic -> Gain -> Analyser -> Master
+            micNode.connect(gainMic);
+            gainMic.connect(analyser);
+            gainMic.connect(masterGain);
+            
+            visualizeMic();
+
+            this.classList.add('recording');
+            this.innerText = "⏹ Disable Microphone";
+            isMicActive = true;
+
+        } catch (e) {
+            alert("Error: " + e.message + "\nCheck browser permissions.");
+        }
+    };
+
+    function visualizeMic() {
+        if(!isMicActive) return;
+        animationId = requestAnimationFrame(visualizeMic);
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for(let i = 0; i < dataArray.length; i++) { sum += dataArray[i]; }
+        let average = sum / dataArray.length;
+        // Scale the visual meter
+        let width = Math.min(100, average * 2); 
+        document.getElementById('micMeter').style.width = width + "%";
+    }
+
+    document.getElementById('volVoice').oninput = function() {
+        if(gainMic) gainMic.gain.value = this.value;
+    }
+
+    // --- 2. Binaural Beats Logic ---
     function startBinaural() {
-        // Create Left Ear
         oscLeft = audioCtx.createOscillator();
         panLeft = audioCtx.createStereoPanner();
-        panLeft.pan.value = -1; // Hard Left
+        panLeft.pan.value = -1; 
 
-        // Create Right Ear
         oscRight = audioCtx.createOscillator();
         panRight = audioCtx.createStereoPanner();
-        panRight.pan.value = 1; // Hard Right
+        panRight.pan.value = 1; 
 
         gainBinaural = audioCtx.createGain();
         gainBinaural.gain.value = document.getElementById('volBinaural').value;
 
-        // Routing
         oscLeft.connect(panLeft).connect(gainBinaural);
         oscRight.connect(panRight).connect(gainBinaural);
         gainBinaural.connect(masterGain);
@@ -165,7 +250,7 @@
         oscRight.frequency.value = base + beat;
     }
 
-    // Link Sliders to Inputs
+    // Link Inputs
     document.getElementById('baseSlider').oninput = function() {
         document.getElementById('baseFreq').value = this.value;
         updateFrequencies();
@@ -178,18 +263,21 @@
         if(gainBinaural) gainBinaural.gain.value = this.value;
     }
 
-    // --- 2. Noise Logic ---
+    // --- 3. Atmosphere Logic (Now with RAIN) ---
     function startNoise() {
-        const bufferSize = audioCtx.sampleRate * 2; // 2 seconds
+        const type = document.getElementById('noiseType').value;
+        
+        // General Buffer Creation
+        const bufferSize = audioCtx.sampleRate * 2; 
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
         const data = buffer.getChannelData(0);
-        const type = document.getElementById('noiseType').value;
 
+        // Generate the Base Noise
         if (type === 'white') {
             for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-        } else if (type === 'pink') {
-            let b0, b1, b2, b3, b4, b5, b6;
-            b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+        } else if (type === 'pink' || type === 'rain') {
+            // Pink noise algorithm
+            let b0=0, b1=0, b2=0, b3=0, b4=0, b5=0, b6=0;
             for (let i = 0; i < bufferSize; i++) {
                 let white = Math.random() * 2 - 1;
                 b0 = 0.99886 * b0 + white * 0.0555179;
@@ -218,46 +306,42 @@
         
         gainNoise = audioCtx.createGain();
         gainNoise.gain.value = document.getElementById('volNoise').value;
+
+        // If RAIN, we add filters and LFO modulation
+        if (type === 'rain') {
+            // 1. Lowpass Filter to muffle the harsh pink noise
+            rainFilter = audioCtx.createBiquadFilter();
+            rainFilter.type = 'lowpass';
+            rainFilter.frequency.value = 800; // Muffled sound
+
+            // 2. Gain Node for modulation (volume wobbling)
+            rainGain = audioCtx.createGain();
+            rainGain.gain.value = 1;
+
+            // 3. LFO to wobble the volume (simulating waves of rain)
+            rainLFO = audioCtx.createOscillator();
+            rainLFO.type = 'sine';
+            rainLFO.frequency.value = 0.5; // Slow wave
+            
+            // Connect LFO to Gain
+            // We need a specific connection to modulate gain parameter without resetting it
+            const lfoGain = audioCtx.createGain();
+            lfoGain.gain.value = 0.3; // Depth of modulation
+            rainLFO.connect(lfoGain).connect(rainGain.gain);
+
+            // Connect Graph: Noise -> Filter -> ModulatedGain -> MasterGain
+            noiseNode.connect(rainFilter).connect(rainGain).connect(gainNoise).connect(masterGain);
+            rainLFO.start();
+        } else {
+            // Standard Connection for Brown/Pink/White
+            noiseNode.connect(gainNoise).connect(masterGain);
+        }
         
-        noiseNode.connect(gainNoise).connect(masterGain);
         noiseNode.start();
     }
 
     document.getElementById('volNoise').oninput = function() {
         if(gainNoise) gainNoise.gain.value = this.value;
-    }
-
-    // --- 3. Mic Logic ---
-    document.getElementById('btnRecord').onclick = async function() {
-        initAudio();
-        if (this.classList.contains('recording')) {
-            // Stop Mic
-            if (micStream) micStream.getTracks().forEach(track => track.stop());
-            this.classList.remove('recording');
-            this.innerText = "🎤 Start Recording Mic";
-            document.getElementById('recordStatus').innerText = "Mic Off";
-            return;
-        }
-
-        try {
-            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            micNode = audioCtx.createMediaStreamSource(micStream);
-            gainMic = audioCtx.createGain();
-            gainMic.gain.value = document.getElementById('volVoice').value;
-            
-            // Connect Mic to Master
-            micNode.connect(gainMic).connect(masterGain);
-            
-            this.classList.add('recording');
-            this.innerText = "⏹ Stop Recording Mic";
-            document.getElementById('recordStatus').innerText = "Mic Live & Monitoring";
-        } catch (e) {
-            alert("Error accessing microphone: " + e.message);
-        }
-    };
-
-    document.getElementById('volVoice').oninput = function() {
-        if(gainMic) gainMic.gain.value = this.value;
     }
 
     // --- 4. Master Logic ---
@@ -268,11 +352,11 @@
             if(oscLeft) oscLeft.stop();
             if(oscRight) oscRight.stop();
             if(noiseNode) noiseNode.stop();
+            if(rainLFO) rainLFO.stop();
             document.getElementById('btnPlay').innerText = "▶ Play Preview";
             isPlaying = false;
         } else {
             // Start
-            if(audioCtx.state === 'suspended') audioCtx.resume();
             startBinaural();
             startNoise();
             document.getElementById('btnPlay').innerText = "⏹ Stop Preview";
@@ -280,16 +364,15 @@
         }
     }
 
-    // --- 5. Export Logic (The "Download" Button) ---
+    // --- 5. Export Logic ---
     function startExport() {
         initAudio();
-        // Setup Destination Stream for Recording
         const dest = audioCtx.createMediaStreamDestination();
         
-        // Re-route everything to Destination AND Speakers
-        if(gainBinaural) { gainBinaural.connect(dest); }
-        if(gainNoise) { gainNoise.connect(dest); }
-        if(gainMic) { gainMic.connect(dest); }
+        // Reroute active nodes to the destination
+        if(gainBinaural) gainBinaural.connect(dest);
+        if(gainNoise) gainNoise.connect(dest);
+        if(gainMic) gainMic.connect(dest);
         
         mediaRecorder = new MediaRecorder(dest.stream);
         chunks = [];
@@ -305,19 +388,16 @@
             document.getElementById('exportStatus').innerText = "Download Ready!";
         };
 
-        // Start recording
         mediaRecorder.start();
-        document.getElementById('exportStatus').innerText = "🔴 Recording Mix... Press 'Stop Preview' to finish.";
+        document.getElementById('exportStatus').innerText = "🔴 Recording... Press 'Stop Preview' to finish.";
         
-        // Ensure audio is playing
         if(!isPlaying) togglePlay();
         
-        // Override the Stop button to trigger download
+        // Override Stop Button
         const oldStop = document.getElementById('btnPlay').onclick;
         document.getElementById('btnPlay').onclick = function() {
             mediaRecorder.stop();
-            togglePlay(); // Stop sounds
-            // Reset button logic
+            togglePlay(); 
             document.getElementById('btnPlay').onclick = togglePlay; 
         }
     }
@@ -325,10 +405,20 @@
     // --- Presets ---
     function applyPreset() {
         const val = document.getElementById('presetSelect').value;
-        if(val === 'theta') { setFreqs(200, 6); }
-        else if(val === 'alpha') { setFreqs(200, 10); }
-        else if(val === 'solf528') { setFreqs(528, 0); } // 0 Beat means Isochronic/Pure tone
-        else if(val === 'solf417') { setFreqs(417, 0); }
+        
+        // Binaural Presets
+        if(val === 'delta') setFreqs(100, 2);
+        else if(val === 'theta') setFreqs(200, 6);
+        else if(val === 'alpha') setFreqs(200, 10);
+        else if(val === 'beta') setFreqs(200, 20);
+        
+        // Solfeggio Presets (Beat Diff is 0)
+        else if(val === '396') setFreqs(396, 0);
+        else if(val === '417') setFreqs(417, 0);
+        else if(val === '528') setFreqs(528, 0);
+        else if(val === '639') setFreqs(639, 0);
+        else if(val === '741') setFreqs(741, 0);
+        else if(val === '852') setFreqs(852, 0);
     }
 
     function setFreqs(base, beat) {
