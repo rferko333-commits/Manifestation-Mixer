@@ -60,6 +60,16 @@
     <!-- 1. Voice Recorder (Sampler) -->
     <div class="panel">
         <h2>1. Voice Recordings</h2>
+        
+        <!-- Mic Selector -->
+        <div class="control-group" style="background: #1e293b; padding: 10px; border-radius: 8px; border: 1px solid #334155;">
+            <label>Input Device:</label>
+            <select id="micSelect">
+                <option value="">Default Microphone</option>
+            </select>
+            <button onclick="getMicDevices()" style="font-size: 12px; padding: 5px 10px; background: #475569;">↻ Scan</button>
+        </div>
+
         <div style="display: flex; gap: 10px; margin-bottom: 15px;">
             <button id="btnTestMic" class="btn-test">🎤 Test Mic (Hold to Hear)</button>
             <div style="font-size: 0.8em; color: #94a3b8; align-self: center;">(Check levels before recording)</div>
@@ -133,9 +143,8 @@
             <select id="noiseType" onchange="if(isEnvPlaying) startAtmosphere(true)">
                 <option value="ocean">🌊 Ocean Waves (Dynamic)</option>
                 <option value="rain">🌧️ Real Rain (Crisp)</option>
+                <option value="brown">🟤 Brown Noise (Deep Rumble)</option>
                 <option value="pink">🌸 Pink Noise (Balanced)</option>
-                <option value="brown">🟤 Brown Noise (Deep)</option>
-                <option value="white">⚪ White Noise (Static)</option>
             </select>
         </div>
         <div class="control-group">
@@ -150,8 +159,8 @@
         <div class="master-grid">
             <!-- Preview Environment -->
             <div>
-                <button id="btnEnvToggle" onclick="toggleEnvironment()" style="width: 100%; padding: 15px;">▶ Start Beats & Atmos</button>
-                <p style="font-size: 0.8em; color: #94a3b8; margin-top:5px;">Preview the background sounds</p>
+                <button id="btnEnvToggle" onclick="toggleEnvironment()" style="width: 100%; padding: 15px;">▶ Preview Mix</button>
+                <p style="font-size: 0.8em; color: #94a3b8; margin-top:5px;">Hear the beats & background</p>
             </div>
             
             <!-- Export -->
@@ -227,13 +236,45 @@
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             masterGain = audioCtx.createGain();
             masterGain.connect(audioCtx.destination);
-            
-            // Create a Destination for Exporting (Everything connects here)
             mainDestination = audioCtx.createMediaStreamDestination();
             masterGain.connect(mainDestination);
         }
         if (audioCtx.state === 'suspended') audioCtx.resume();
     }
+
+    // ==========================================
+    // 0. DEVICE SELECTION
+    // ==========================================
+    
+    async function getMicDevices() {
+        // Request permission first to get labels
+        try {
+            await navigator.mediaDevices.getUserMedia({ audio: true });
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const micSelect = document.getElementById('micSelect');
+            micSelect.innerHTML = "";
+            
+            const audioInputs = devices.filter(device => device.kind === 'audioinput');
+            
+            audioInputs.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Microphone ${micSelect.length + 1}`;
+                micSelect.appendChild(option);
+            });
+            
+            if(audioInputs.length === 0) {
+                const option = document.createElement('option');
+                option.text = "No microphones found";
+                micSelect.appendChild(option);
+            }
+        } catch(e) {
+            console.error("Error fetching devices", e);
+        }
+    }
+    
+    // Init devices on load
+    window.addEventListener('load', getMicDevices);
 
     // ==========================================
     // 1. MIC RECORDER & TESTING
@@ -245,11 +286,24 @@
     const recTimeDisplay = document.getElementById('recTime');
     const micMeter = document.getElementById('micMeter');
 
+    async function getStream() {
+        const deviceId = document.getElementById('micSelect').value;
+        const constraints = { 
+            audio: { 
+                deviceId: deviceId ? { exact: deviceId } : undefined,
+                echoCancellation: false, 
+                noiseSuppression: false, 
+                autoGainControl: false
+            } 
+        };
+        return await navigator.mediaDevices.getUserMedia(constraints);
+    }
+
     // Test Mic (Pass-through)
     btnTestMic.onmousedown = async () => {
         initAudio();
         try {
-            if(!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            if(!micStream) micStream = await getStream();
             
             testMicNode = audioCtx.createMediaStreamSource(micStream);
             testMicGain = audioCtx.createGain();
@@ -257,392 +311,10 @@
             
             testMicNode.connect(testMicGain).connect(masterGain);
             
-            // Visualizer setup if not already active
             if(!analyser) {
                 analyser = audioCtx.createAnalyser();
                 testMicNode.connect(analyser);
                 visualizeMic();
             }
             isTestMicOn = true;
-            btnTestMic.innerText = "🎤 Listening... (Release to Stop)";
-            btnTestMic.style.background = "#22c55e"; // Green
-        } catch (e) { console.error(e); }
-    };
-
-    btnTestMic.onmouseup = () => {
-        if(isTestMicOn) {
-            testMicNode.disconnect();
-            testMicGain.disconnect();
-            isTestMicOn = false;
-            btnTestMic.innerText = "🎤 Test Mic (Hold to Hear)";
-            btnTestMic.style.background = "var(--warning)";
-        }
-    };
-    // Handle touch for mobile
-    btnTestMic.ontouchstart = btnTestMic.onmousedown;
-    btnTestMic.ontouchend = btnTestMic.onmouseup;
-
-    // Record Mic
-    btnRecMic.onclick = async () => {
-        initAudio();
-        try {
-            if(!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(micStream);
-            micChunks = [];
-            
-            // Visualizer Setup
-            const source = audioCtx.createMediaStreamSource(micStream);
-            if(!analyser) {
-                analyser = audioCtx.createAnalyser();
-                visualizeMic();
-            }
-            source.connect(analyser);
-
-            mediaRecorder.ondataavailable = e => micChunks.push(e.data);
-            mediaRecorder.onstop = async () => {
-                const blob = new Blob(micChunks, { type: 'audio/webm' });
-                const arrayBuffer = await blob.arrayBuffer();
-                const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-                addClipToList(audioBuffer);
-                micMeter.style.width = '0%';
-            };
-
-            mediaRecorder.start();
-            isRecordingMic = true;
-            recStartTime = Date.now();
-            
-            // UI Updates
-            btnRecMic.disabled = true;
-            btnStopMic.disabled = false;
-            btnTestMic.disabled = true;
-            recTimeDisplay.style.opacity = 1;
-            micInterval = setInterval(updateRecTimer, 1000);
-            
-        } catch (err) {
-            alert("Mic Error: " + err.message);
-        }
-    };
-
-    btnStopMic.onclick = () => {
-        if(isRecordingMic) {
-            mediaRecorder.stop();
-            isRecordingMic = false;
-            btnRecMic.disabled = false;
-            btnStopMic.disabled = true;
-            btnTestMic.disabled = false;
-            clearInterval(micInterval);
-            recTimeDisplay.style.opacity = 0;
-            recTimeDisplay.innerText = "00:00";
-        }
-    };
-
-    function updateRecTimer() {
-        const elapsed = Math.floor((Date.now() - recStartTime) / 1000);
-        const min = Math.floor(elapsed / 60).toString().padStart(2, '0');
-        const sec = (elapsed % 60).toString().padStart(2, '0');
-        recTimeDisplay.innerText = `${min}:${sec}`;
-    }
-
-    function visualizeMic() {
-        if(!isRecordingMic && !isTestMicOn) return;
-        requestAnimationFrame(visualizeMic);
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
-        let avg = sum / dataArray.length;
-        micMeter.style.width = Math.min(100, avg * 2) + "%";
-    }
-
-    // --- Clip Manager ---
-    function addClipToList(buffer) {
-        document.getElementById('emptyListMsg').style.display = 'none';
-        const id = clipIdCounter++;
-        const clip = { id, buffer, name: `Affirmation ${id}`, isPlaying: false, gainVal: 1.0 };
-        clips.push(clip);
-        renderClipList();
-    }
-
-    function renderClipList() {
-        const list = document.getElementById('clipList');
-        list.innerHTML = "";
-        
-        clips.forEach(clip => {
-            const li = document.createElement('li');
-            li.className = `clip-item ${clip.isPlaying ? 'playing' : ''}`;
-            
-            li.innerHTML = `
-                <button onclick="toggleClip(${clip.id})" class="${clip.isPlaying ? 'btn-stop' : 'btn-play'}">
-                    ${clip.isPlaying ? '❚❚ Stop Loop' : '▶ Play Loop'}
-                </button>
-                <input type="text" class="clip-name" value="${clip.name}" onchange="updateClipName(${clip.id}, this.value)">
-                <input type="range" min="0" max="1.5" step="0.1" value="${clip.gainVal}" 
-                       oninput="updateClipVolume(${clip.id}, this.value)" style="max-width:80px" title="Volume">
-                <button onclick="deleteClip(${clip.id})" style="background:transparent; color:#ef4444; padding:5px; font-size:18px;">✖</button>
-            `;
-            list.appendChild(li);
-        });
-    }
-
-    function toggleClip(id) {
-        initAudio();
-        const clip = clips.find(c => c.id === id);
-        if(!clip) return;
-
-        if (clip.isPlaying) {
-            // Stop
-            if(clip.sourceNode) clip.sourceNode.stop();
-            clip.isPlaying = false;
-        } else {
-            // Play (Loop)
-            const source = audioCtx.createBufferSource();
-            source.buffer = clip.buffer;
-            source.loop = true;
-            
-            const gain = audioCtx.createGain();
-            gain.gain.value = clip.gainVal;
-            
-            source.connect(gain).connect(masterGain);
-            
-            clip.sourceNode = source;
-            clip.gainNode = gain;
-            source.start();
-            clip.isPlaying = true;
-        }
-        renderClipList();
-    }
-
-    function updateClipVolume(id, val) {
-        const clip = clips.find(c => c.id === id);
-        clip.gainVal = val;
-        if(clip.gainNode) clip.gainNode.gain.value = val;
-    }
-    function updateClipName(id, name) { clips.find(c => c.id === id).name = name; }
-    function deleteClip(id) {
-        const clip = clips.find(c => c.id === id);
-        if(clip.isPlaying && clip.sourceNode) clip.sourceNode.stop();
-        clips = clips.filter(c => c.id !== id);
-        renderClipList();
-    }
-
-    // ==========================================
-    // 2. MASTER ENVIRONMENT (Beats + Atmos)
-    // ==========================================
-    
-    function toggleEnvironment() {
-        initAudio();
-        const btn = document.getElementById('btnEnvToggle');
-        
-        if (isEnvPlaying) {
-            // STOP
-            if(oscLeft) { oscLeft.stop(); oscLeft = null; }
-            if(oscRight) { oscRight.stop(); oscRight = null; }
-            if(atmosNode) { atmosNode.stop(); atmosNode = null; }
-            if(lfoNode) { lfoNode.stop(); lfoNode = null; }
-            
-            isEnvPlaying = false;
-            btn.innerText = "▶ Start Beats & Atmos";
-            btn.style.background = "var(--primary)";
-        } else {
-            // START
-            updateBinaural();
-            startAtmosphere();
-            
-            isEnvPlaying = true;
-            btn.innerText = "⏹ Stop Beats & Atmos";
-            btn.style.background = "#64748b";
-        }
-    }
-
-    function updateBinaural() {
-        // Only restart if active, or if called from Toggle
-        if(!isEnvPlaying && !oscLeft) return; 
-        
-        // If updating while playing, we just change freq. If not playing, we create.
-        if(!oscLeft) {
-            oscLeft = audioCtx.createOscillator();
-            const panLeft = audioCtx.createStereoPanner();
-            panLeft.pan.value = -1;
-
-            oscRight = audioCtx.createOscillator();
-            const panRight = audioCtx.createStereoPanner();
-            panRight.pan.value = 1;
-
-            gainBinaural = audioCtx.createGain();
-            gainBinaural.gain.value = document.getElementById('volBinaural').value;
-
-            oscLeft.connect(panLeft).connect(gainBinaural);
-            oscRight.connect(panRight).connect(gainBinaural);
-            gainBinaural.connect(masterGain);
-
-            oscLeft.start();
-            oscRight.start();
-        }
-        
-        const base = parseFloat(document.getElementById('baseFreq').value);
-        const beat = parseFloat(document.getElementById('beatFreq').value);
-        oscLeft.frequency.value = base;
-        oscRight.frequency.value = base + beat;
-    }
-
-    // Controls for sliders
-    document.getElementById('baseSlider').oninput = function() {
-        document.getElementById('baseFreq').value = this.value;
-        if(isEnvPlaying) updateBinaural();
-    };
-    document.getElementById('beatSlider').oninput = function() {
-        document.getElementById('beatFreq').value = this.value;
-        if(isEnvPlaying) updateBinaural();
-    };
-    document.getElementById('volBinaural').oninput = function() {
-        if(gainBinaural) gainBinaural.gain.value = this.value;
-    };
-    
-    // ==========================================
-    // 3. ATMOSPHERE ENGINE
-    // ==========================================
-    
-    function startAtmosphere(restart = false) {
-        if(restart && atmosNode) { atmosNode.stop(); if(lfoNode) lfoNode.stop(); }
-        if(!isEnvPlaying && !restart) return; 
-
-        const type = document.getElementById('noiseType').value;
-        const bufferSize = audioCtx.sampleRate * 2;
-        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-        const data = buffer.getChannelData(0);
-
-        // Pink Noise Gen
-        let b0=0, b1=0, b2=0, b3=0, b4=0, b5=0, b6=0;
-        for (let i = 0; i < bufferSize; i++) {
-            let white = Math.random() * 2 - 1;
-            b0 = 0.99886 * b0 + white * 0.0555179;
-            b1 = 0.99332 * b1 + white * 0.0750759;
-            b2 = 0.96900 * b2 + white * 0.1538520;
-            b3 = 0.86650 * b3 + white * 0.3104856;
-            b4 = 0.55000 * b4 + white * 0.5329522;
-            b5 = -0.7616 * b5 - white * 0.0168981;
-            data[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
-            data[i] *= 0.11; 
-            b6 = white * 0.115926;
-        }
-
-        atmosNode = audioCtx.createBufferSource();
-        atmosNode.buffer = buffer;
-        atmosNode.loop = true;
-        
-        atmosGain = audioCtx.createGain();
-        atmosGain.gain.value = document.getElementById('volNoise').value;
-
-        if (type === 'ocean') {
-            filterNode = audioCtx.createBiquadFilter();
-            filterNode.type = 'lowpass';
-            filterNode.frequency.value = 400; 
-            const waveGain = audioCtx.createGain();
-            lfoNode = audioCtx.createOscillator();
-            lfoNode.type = 'sine';
-            lfoNode.frequency.value = 0.15; 
-            const lfoStrength = audioCtx.createGain();
-            lfoStrength.gain.value = 0.8; 
-            lfoNode.connect(lfoStrength).connect(waveGain.gain);
-            atmosNode.connect(filterNode).connect(waveGain).connect(atmosGain).connect(masterGain);
-            lfoNode.start();
-        } 
-        else if (type === 'rain') {
-            filterNode = audioCtx.createBiquadFilter();
-            filterNode.type = 'highpass';
-            filterNode.frequency.value = 600; 
-            atmosNode.connect(filterNode).connect(atmosGain).connect(masterGain);
-        }
-        else if (type === 'white') {
-             // Regen buffer for white noise
-             const wData = buffer.getChannelData(0);
-             for (let i = 0; i < bufferSize; i++) wData[i] = Math.random() * 2 - 1;
-             atmosNode.connect(atmosGain).connect(masterGain);
-        }
-        else { // Pink/Brown
-            atmosNode.connect(atmosGain).connect(masterGain);
-        }
-        
-        atmosNode.start();
-    }
-
-    document.getElementById('volNoise').oninput = function() {
-        if(atmosGain) atmosGain.gain.value = this.value;
-    }
-
-    // ==========================================
-    // 4. PRESETS & EXPORT
-    // ==========================================
-
-    function applyPreset() {
-        const val = document.getElementById('presetSelect').value;
-        if(val === 'custom') return;
-        
-        // Brainwaves
-        if(val === 'delta') setFreqs(100, 2);
-        else if(val === 'theta') setFreqs(200, 6);
-        else if(val === 'alpha') setFreqs(200, 10);
-        else if(val === 'beta') setFreqs(200, 20);
-        else if(val === 'gamma') setFreqs(200, 40);
-        
-        // Solfeggio (Beat = 0)
-        else if(val === '174') setFreqs(174, 0);
-        else if(val === '285') setFreqs(285, 0);
-        else if(val === '396') setFreqs(396, 0);
-        else if(val === '417') setFreqs(417, 0);
-        else if(val === '528') setFreqs(528, 0);
-        else if(val === '639') setFreqs(639, 0);
-        else if(val === '741') setFreqs(741, 0);
-        else if(val === '852') setFreqs(852, 0);
-        else if(val === '963') setFreqs(963, 0);
-        
-        if(isEnvPlaying) updateBinaural();
-    }
-    
-    function setFreqs(base, beat) {
-        document.getElementById('baseFreq').value = base;
-        document.getElementById('baseSlider').value = base;
-        document.getElementById('beatFreq').value = beat;
-        document.getElementById('beatSlider').value = beat;
-    }
-    
-    function startExport() {
-        initAudio();
-        const btn = document.getElementById('btnExport');
-        const status = document.getElementById('exportStatus');
-
-        if(isExporting) {
-            masterRecorder.stop();
-            isExporting = false;
-            btn.innerText = "💾 Download Master Mix";
-            btn.style.background = "var(--success)";
-            btn.classList.remove('blink');
-            return;
-        }
-
-        masterRecorder = new MediaRecorder(mainDestination.stream);
-        masterChunks = [];
-
-        masterRecorder.ondataavailable = e => masterChunks.push(e.data);
-        masterRecorder.onstop = e => {
-            const blob = new Blob(masterChunks, { 'type' : 'audio/wav; codecs=MS_PCM' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "manifestation_mix.wav";
-            a.click();
-            status.innerText = "Download Started!";
-            setTimeout(() => status.innerText = "", 3000);
-        };
-
-        masterRecorder.start();
-        isExporting = true;
-        btn.innerText = "⏹ Stop Recording to Save";
-        btn.style.background = "var(--danger)";
-        btn.classList.add('blink');
-        status.innerText = "Recording Output... Click Stop to save file.";
-    }
-</script>
-
-</body>
-</html>
+            btnTest
