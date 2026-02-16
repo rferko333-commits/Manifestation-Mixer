@@ -32,13 +32,19 @@
 
         /* Recording List Styles */
         .clip-list { list-style: none; padding: 0; margin: 0; }
-        .clip-item { background: #0f172a; padding: 10px; border-radius: 8px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; border: 1px solid #334155; }
+        .clip-item { background: #0f172a; padding: 10px; border-radius: 8px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; border: 1px solid #334155; flex-wrap: wrap; }
         .clip-item.playing { border-color: var(--success); box-shadow: 0 0 10px rgba(16, 185, 129, 0.2); }
-        .clip-name { flex-grow: 1; background: transparent; border: none; color: white; font-size: 1rem; }
+        .clip-name { flex-grow: 1; background: transparent; border: none; color: white; font-size: 1rem; min-width: 150px; }
+        
+        /* Custom File Input */
+        .file-upload { position: relative; overflow: hidden; display: inline-block; }
+        .file-upload input[type=file] { position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; width: 100%; }
+        
+        /* Checkbox styling */
+        .checkbox-wrapper { display: flex; align-items: center; gap: 5px; font-size: 0.9em; color: #cbd5e1; background: #334155; padding: 5px 10px; border-radius: 4px; }
         
         .info-box { background: #0f172a; padding: 15px; border-radius: 8px; font-size: 0.85em; border-left: 4px solid var(--primary); color: #94a3b8; margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;}
         
-        /* Visual Meter */
         .meter-container { width: 100%; height: 6px; background: #334155; border-radius: 3px; overflow: hidden; margin-top: 5px;}
         .meter-fill { height: 100%; width: 0%; background: var(--success); transition: width 0.05s; }
         
@@ -57,8 +63,6 @@
     <!-- 1. Voice Recorder -->
     <div class="panel">
         <h2>1. Voice Recordings</h2>
-        
-        <!-- Mic Selector -->
         <div class="control-group" style="background: #1e293b; padding: 10px; border-radius: 8px; border: 1px solid #334155;">
             <label>Input Device:</label>
             <div style="flex-grow: 1; display: flex; gap: 5px;">
@@ -134,8 +138,9 @@
     <!-- 3. Atmosphere -->
     <div class="panel">
         <h2>3. Atmosphere</h2>
+        <!-- Generator -->
         <div class="control-group">
-            <label>Soundscape</label>
+            <label>Generated:</label>
             <select id="noiseType" onchange="if(isEnvPlaying) startAtmosphere(true)">
                 <option value="ocean">🌊 Ocean Waves (Dynamic)</option>
                 <option value="brown">🟤 Brown Noise (Deep Rumble)</option>
@@ -143,8 +148,24 @@
             </select>
         </div>
         <div class="control-group">
-            <label>Atmos Volume</label>
+            <label>Gen Volume</label>
             <input type="range" id="volNoise" min="0" max="0.8" step="0.01" value="0.3">
+        </div>
+        
+        <hr style="border-color: #334155; margin: 15px 0;">
+        
+        <!-- Custom Import -->
+        <div class="control-group">
+            <label>Custom Audio:</label>
+            <div class="file-upload">
+                <button class="btn-scan" style="width: 100%;">📁 Upload File (MP3/WAV)</button>
+                <input type="file" id="customFile" accept="audio/*" onchange="handleFileUpload(this)">
+            </div>
+            <span id="fileNameDisplay" style="font-size: 0.8em; color: var(--accent); margin-left: 10px;"></span>
+        </div>
+        <div class="control-group">
+            <label>Custom Vol</label>
+            <input type="range" id="volCustom" min="0" max="1" step="0.01" value="0.5" oninput="updateCustomVol(this.value)">
         </div>
     </div>
 
@@ -154,10 +175,9 @@
         <div class="master-grid">
             <div>
                 <button id="btnEnvToggle" onclick="toggleEnvironment()" style="width: 100%; padding: 15px;">▶ Preview Mix</button>
-                <p style="font-size: 0.8em; color: #94a3b8; margin-top:5px;">Hear the beats & background</p>
+                <p style="font-size: 0.8em; color: #94a3b8; margin-top:5px;">Hear beats, atmos & custom</p>
             </div>
             <div>
-                <!-- New File Name Input -->
                 <div style="margin-bottom: 5px;">
                     <input type="text" id="fileName" value="manifestation_mix" placeholder="Filename" style="width: 100%; text-align: center; box-sizing: border-box; background: #334155; color:white; border:none; padding:5px;">
                 </div>
@@ -202,6 +222,7 @@
     let audioCtx, masterGain, mainDestination;
     let oscLeft, oscRight, gainBinaural;
     let atmosNode, atmosGain, lfoNode, filterNode;
+    let customBuffer, customNode, customGain; // Custom Import
     let isEnvPlaying = false; 
 
     // --- Recorder Vars ---
@@ -221,7 +242,7 @@
     let masterRecorder, masterChunks = [];
     let isExporting = false;
 
-    // --- INIT AUDIO (Fail-safe) ---
+    // --- INIT AUDIO ---
     function initAudio() {
         if (!audioCtx) {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -230,63 +251,62 @@
             mainDestination = audioCtx.createMediaStreamDestination();
             masterGain.connect(mainDestination);
         }
-        if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
+        if (audioCtx.state === 'suspended') { audioCtx.resume(); }
     }
 
     // ==========================================
-    // 1. DEVICE SELECTION
+    // 0. UTILS & DEVICE SELECTION
     // ==========================================
     
+    // SAFETY FADE: Modifies buffer data directly to prevent clicking
+    function applySafetyFade(buffer) {
+        const fadeLength = 2000; // ~40ms fade
+        for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+            const data = buffer.getChannelData(ch);
+            const len = data.length;
+            // Fade In Start
+            for (let i = 0; i < fadeLength && i < len; i++) {
+                data[i] *= (i / fadeLength);
+            }
+            // Fade Out End
+            for (let i = 0; i < fadeLength && i < len; i++) {
+                data[len - 1 - i] *= (i / fadeLength);
+            }
+        }
+    }
+
     async function scanDevices() {
         initAudio();
         const micSelect = document.getElementById('micSelect');
         micSelect.innerHTML = "<option>Scanning...</option>";
-        
         try {
             const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             tempStream.getTracks().forEach(t => t.stop()); 
-            
             const devices = await navigator.mediaDevices.enumerateDevices();
             micSelect.innerHTML = ""; 
-            
             const audioInputs = devices.filter(device => device.kind === 'audioinput');
-            
             audioInputs.forEach((device, index) => {
                 const option = document.createElement('option');
                 option.value = device.deviceId;
                 option.text = device.label || `Microphone ${index + 1}`;
                 micSelect.appendChild(option);
             });
-            
-            if(audioInputs.length === 0) {
-                micSelect.innerHTML = "<option value=''>Default Microphone</option>";
-            }
+            if(audioInputs.length === 0) micSelect.innerHTML = "<option value=''>Default Microphone</option>";
         } catch(e) {
-            console.error("Scan Error:", e);
-            micSelect.innerHTML = "<option value=''>Permission Denied (Using Default)</option>";
-            alert("Could not list devices. Please allow Microphone access.");
+            micSelect.innerHTML = "<option value=''>Permission Denied</option>";
+            alert("Please allow mic access.");
         }
     }
 
     async function getStream() {
         const deviceId = document.getElementById('micSelect').value;
-        const constraints = { 
-            audio: { 
-                deviceId: deviceId ? { exact: deviceId } : undefined,
-                echoCancellation: false, noiseSuppression: false, autoGainControl: false 
-            } 
-        };
-        try {
-            return await navigator.mediaDevices.getUserMedia(constraints);
-        } catch (e) {
-            return await navigator.mediaDevices.getUserMedia({ audio: true });
-        }
+        const constraints = { audio: { deviceId: deviceId ? { exact: deviceId } : undefined, echoCancellation: false, noiseSuppression: false, autoGainControl: false } };
+        try { return await navigator.mediaDevices.getUserMedia(constraints); } 
+        catch (e) { return await navigator.mediaDevices.getUserMedia({ audio: true }); }
     }
 
     // ==========================================
-    // 2. MIC RECORDER & TESTING
+    // 1. MIC RECORDER
     // ==========================================
     
     const btnTestMic = document.getElementById('btnTestMic');
@@ -300,22 +320,18 @@
         try {
             if(activeStream) activeStream.getTracks().forEach(t=>t.stop());
             activeStream = await getStream();
-            
             testMicNode = audioCtx.createMediaStreamSource(activeStream);
             testMicGain = audioCtx.createGain();
             testMicGain.gain.value = 1.0;
             testMicNode.connect(testMicGain).connect(masterGain);
-            
             if(!analyser) analyser = audioCtx.createAnalyser();
             testMicNode.connect(analyser);
             visualizeMic();
-            
             isTestMicOn = true;
-            btnTestMic.innerText = "🎤 Listening... (Release)";
+            btnTestMic.innerText = "🎤 Listening...";
             btnTestMic.style.background = "#22c55e"; 
         } catch (e) { console.error(e); }
     };
-
     const stopTest = () => {
         if(isTestMicOn) {
             if(testMicNode) { testMicNode.disconnect(); testMicNode = null; }
@@ -327,10 +343,8 @@
             micMeter.style.width = '0%';
         }
     };
-
     btnTestMic.addEventListener('mousedown', startTest);
     btnTestMic.addEventListener('mouseup', stopTest);
-    btnTestMic.addEventListener('mouseleave', stopTest);
     btnTestMic.addEventListener('touchstart', (e) => { e.preventDefault(); startTest(); });
     btnTestMic.addEventListener('touchend', (e) => { e.preventDefault(); stopTest(); });
 
@@ -339,58 +353,49 @@
         try {
             if(activeStream) activeStream.getTracks().forEach(t=>t.stop());
             activeStream = await getStream();
-            
             mediaRecorder = new MediaRecorder(activeStream);
             micChunks = [];
-            
             const source = audioCtx.createMediaStreamSource(activeStream);
             if(!analyser) analyser = audioCtx.createAnalyser();
             source.connect(analyser);
             visualizeMic();
-
             mediaRecorder.ondataavailable = e => micChunks.push(e.data);
             mediaRecorder.onstop = async () => {
                 const blob = new Blob(micChunks, { type: 'audio/webm' });
                 const arrayBuffer = await blob.arrayBuffer();
                 const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                // APPLY FADE FIX HERE
+                applySafetyFade(audioBuffer);
                 addClipToList(audioBuffer);
                 if(activeStream) { activeStream.getTracks().forEach(t=>t.stop()); activeStream = null; }
                 micMeter.style.width = '0%';
             };
-
             mediaRecorder.start();
             isRecordingMic = true;
             recStartTime = Date.now();
-            
             btnRecMic.disabled = true;
             btnStopMic.disabled = false;
-            btnTestMic.disabled = true;
             recTimeDisplay.style.opacity = 1;
             micInterval = setInterval(updateRecTimer, 1000);
-            
         } catch (err) { alert("Mic Error: " + err.message); }
     };
-
     btnStopMic.onclick = () => {
         if(isRecordingMic) {
             mediaRecorder.stop();
             isRecordingMic = false;
             btnRecMic.disabled = false;
             btnStopMic.disabled = true;
-            btnTestMic.disabled = false;
             clearInterval(micInterval);
             recTimeDisplay.style.opacity = 0;
             recTimeDisplay.innerText = "00:00";
         }
     };
-
     function updateRecTimer() {
         const elapsed = Math.floor((Date.now() - recStartTime) / 1000);
         const min = Math.floor(elapsed / 60).toString().padStart(2, '0');
         const sec = (elapsed % 60).toString().padStart(2, '0');
         recTimeDisplay.innerText = `${min}:${sec}`;
     }
-
     function visualizeMic() {
         if(!isRecordingMic && !isTestMicOn) return;
         requestAnimationFrame(visualizeMic);
@@ -405,12 +410,10 @@
     function addClipToList(buffer) {
         document.getElementById('emptyListMsg').style.display = 'none';
         const id = clipIdCounter++;
-        // ADDED startTime property to track loop position
-        const clip = { id, buffer, name: `Affirmation ${id}`, isPlaying: false, gainVal: 1.0, startTime: 0 };
+        const clip = { id, buffer, name: `Affirmation ${id}`, isPlaying: false, gainVal: 1.0, startTime: 0, isAngelic: false };
         clips.push(clip);
         renderClipList();
     }
-
     function renderClipList() {
         const list = document.getElementById('clipList');
         list.innerHTML = "";
@@ -422,6 +425,10 @@
                     ${clip.isPlaying ? '❚❚ Stop' : '▶ Loop'}
                 </button>
                 <input type="text" class="clip-name" value="${clip.name}" onchange="updateClipName(${clip.id}, this.value)">
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="ang_${clip.id}" ${clip.isAngelic ? 'checked' : ''} onchange="toggleAngelic(${clip.id}, this.checked)">
+                    <label for="ang_${clip.id}" style="width:auto; font-weight:normal; color:#cbd5e1; cursor:pointer;">✨ Angelic</label>
+                </div>
                 <input type="range" min="0" max="1.5" step="0.1" value="${clip.gainVal}" 
                        oninput="updateClipVolume(${clip.id}, this.value)" style="max-width:80px">
                 <button onclick="deleteClip(${clip.id})" style="background:transparent; color:#ef4444; padding:5px; font-size:18px;">✖</button>
@@ -434,7 +441,6 @@
         initAudio(); 
         const clip = clips.find(c => c.id === id);
         if(!clip) return;
-
         if (clip.isPlaying) {
             if(clip.sourceNode) clip.sourceNode.stop();
             clip.isPlaying = false;
@@ -442,35 +448,41 @@
             const source = audioCtx.createBufferSource();
             source.buffer = clip.buffer;
             source.loop = true;
-            const gain = audioCtx.createGain();
             
-            // Soft Start (De-click)
-            gain.gain.setValueAtTime(0, audioCtx.currentTime);
-            gain.gain.linearRampToValueAtTime(clip.gainVal, audioCtx.currentTime + 0.05);
-
-            source.connect(gain).connect(masterGain);
+            // Chain setup
+            let lastNode = source;
+            
+            // Angelic Filter Logic
+            if(clip.isAngelic) {
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'highpass';
+                filter.frequency.value = 350; // Cut mud
+                source.connect(filter);
+                lastNode = filter;
+            }
+            
+            const gain = audioCtx.createGain();
+            gain.gain.value = clip.gainVal;
+            lastNode.connect(gain).connect(masterGain);
             
             clip.sourceNode = source;
             clip.gainNode = gain;
-            
-            // SAVE START TIME to align export
             clip.startTime = audioCtx.currentTime;
-            
             source.start();
             clip.isPlaying = true;
         }
         renderClipList();
     }
-
+    
+    function toggleAngelic(id, checked) {
+        const clip = clips.find(c => c.id === id);
+        clip.isAngelic = checked;
+        if(clip.isPlaying) { toggleClip(id); toggleClip(id); } // Restart to apply
+    }
     function updateClipVolume(id, val) {
         const clip = clips.find(c => c.id === id);
         clip.gainVal = val;
-        if(clip.gainNode) {
-            // Smooth Volume Change
-            clip.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
-            clip.gainNode.gain.setValueAtTime(clip.gainNode.gain.value, audioCtx.currentTime);
-            clip.gainNode.gain.linearRampToValueAtTime(val, audioCtx.currentTime + 0.1);
-        }
+        if(clip.gainNode) clip.gainNode.gain.linearRampToValueAtTime(val, audioCtx.currentTime + 0.1);
     }
     function updateClipName(id, name) { clips.find(c => c.id === id).name = name; }
     function deleteClip(id) {
@@ -481,27 +493,48 @@
     }
 
     // ==========================================
-    // 3. MASTER ENV
+    // 2. CUSTOM ATMOSPHERE IMPORT
+    // ==========================================
+    async function handleFileUpload(input) {
+        initAudio();
+        const file = input.files[0];
+        if(!file) return;
+        document.getElementById('fileNameDisplay').innerText = "Loading: " + file.name;
+        
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            customBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            document.getElementById('fileNameDisplay').innerText = "Loaded: " + file.name;
+            if(isEnvPlaying) startAtmosphere(true);
+        } catch(e) {
+            alert("Error decoding audio file.");
+        }
+    }
+    
+    function updateCustomVol(val) {
+        if(customGain) customGain.gain.value = val;
+    }
+
+    // ==========================================
+    // 3. MASTER ENV (Generators + Custom)
     // ==========================================
     
     function toggleEnvironment() {
         initAudio();
         const btn = document.getElementById('btnEnvToggle');
-        
         if (isEnvPlaying) {
             if(oscLeft) { oscLeft.stop(); oscLeft = null; }
             if(oscRight) { oscRight.stop(); oscRight = null; }
             if(atmosNode) { atmosNode.stop(); atmosNode = null; }
             if(lfoNode) { lfoNode.stop(); lfoNode = null; }
+            if(customNode) { customNode.stop(); customNode = null; }
             isEnvPlaying = false;
             btn.innerText = "▶ Preview Mix";
             btn.style.background = "var(--primary)";
         } else {
-            // FIX: Set playing TRUE before starting engines so gates pass
             isEnvPlaying = true;
             updateBinaural(true); 
             startAtmosphere();
-            
             btn.innerText = "⏹ Stop Mix";
             btn.style.background = "#64748b";
         }
@@ -509,7 +542,6 @@
 
     function updateBinaural(forceStart = false) {
         if(!isEnvPlaying && !forceStart) return; 
-        
         if(!oscLeft) {
             oscLeft = audioCtx.createOscillator();
             const panLeft = audioCtx.createStereoPanner();
@@ -519,42 +551,32 @@
             panRight.pan.value = 1;
             gainBinaural = audioCtx.createGain();
             gainBinaural.gain.value = document.getElementById('volBinaural').value;
-
             oscLeft.connect(panLeft).connect(gainBinaural);
             oscRight.connect(panRight).connect(gainBinaural);
             gainBinaural.connect(masterGain);
             oscLeft.start();
             oscRight.start();
         }
-        
         const base = parseFloat(document.getElementById('baseFreq').value);
         const beat = parseFloat(document.getElementById('beatFreq').value);
         oscLeft.frequency.value = base;
         oscRight.frequency.value = base + beat;
     }
 
-    document.getElementById('baseSlider').oninput = function() {
-        document.getElementById('baseFreq').value = this.value;
-        if(isEnvPlaying) updateBinaural();
-    };
-    document.getElementById('beatSlider').oninput = function() {
-        document.getElementById('beatFreq').value = this.value;
-        if(isEnvPlaying) updateBinaural();
-    };
-    document.getElementById('volBinaural').oninput = function() {
-        if(gainBinaural) gainBinaural.gain.value = this.value;
-    };
+    document.getElementById('baseSlider').oninput = function() { document.getElementById('baseFreq').value = this.value; if(isEnvPlaying) updateBinaural(); };
+    document.getElementById('beatSlider').oninput = function() { document.getElementById('beatFreq').value = this.value; if(isEnvPlaying) updateBinaural(); };
+    document.getElementById('volBinaural').oninput = function() { if(gainBinaural) gainBinaural.gain.value = this.value; };
     
     function startAtmosphere(restart = false) {
         if(restart && atmosNode) { atmosNode.stop(); if(lfoNode) lfoNode.stop(); }
+        if(restart && customNode) { customNode.stop(); customNode = null; }
         if(!isEnvPlaying && !restart) return; 
 
+        // 1. Generated Atmos
         const type = document.getElementById('noiseType').value;
         const bufferSize = audioCtx.sampleRate * 2;
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
         const data = buffer.getChannelData(0);
-
-        // Standard Pink Noise Gen
         let b0=0, b1=0, b2=0, b3=0, b4=0, b5=0, b6=0;
         for (let i = 0; i < bufferSize; i++) {
             let white = Math.random() * 2 - 1;
@@ -568,19 +590,15 @@
             data[i] *= 0.11; 
             b6 = white * 0.115926;
         }
-
-        // --- FIXED BROWN NOISE GENERATION ---
         if (type === 'brown') {
-            // Recalculate buffer strictly for Brown
             let lastOut = 0;
             for (let i = 0; i < bufferSize; i++) {
                 let white = Math.random() * 2 - 1;
                 data[i] = (lastOut + (0.02 * white)) / 1.02;
                 lastOut = data[i];
-                data[i] *= 8.0; // Boost Gain Significantly
+                data[i] *= 8.0; 
             }
         }
-
         atmosNode = audioCtx.createBufferSource();
         atmosNode.buffer = buffer;
         atmosNode.loop = true;
@@ -600,23 +618,29 @@
         } 
         else { atmosNode.connect(atmosGain).connect(masterGain); }
         atmosNode.start();
+        
+        // 2. Custom File (If loaded)
+        if(customBuffer) {
+            customNode = audioCtx.createBufferSource();
+            customNode.buffer = customBuffer;
+            customNode.loop = true;
+            customGain = audioCtx.createGain();
+            customGain.gain.value = document.getElementById('volCustom').value;
+            customNode.connect(customGain).connect(masterGain);
+            customNode.start();
+        }
     }
-
-    document.getElementById('volNoise').oninput = function() {
-        if(atmosGain) atmosGain.gain.value = this.value;
-    }
+    document.getElementById('volNoise').oninput = function() { if(atmosGain) atmosGain.gain.value = this.value; }
 
     function applyPreset() {
         const val = document.getElementById('presetSelect').value;
         if(val === 'custom') return;
-        
         const set = (base, beat) => {
             document.getElementById('baseFreq').value = base;
             document.getElementById('baseSlider').value = base;
             document.getElementById('beatFreq').value = beat;
             document.getElementById('beatSlider').value = beat;
         };
-
         if(val === 'delta') set(100, 2);
         else if(val === 'theta') set(200, 6);
         else if(val === 'alpha') set(200, 10);
@@ -631,22 +655,18 @@
         else if(val === '741') set(741, 0);
         else if(val === '852') set(852, 0);
         else if(val === '963') set(963, 0);
-        
         if(isEnvPlaying) updateBinaural();
     }
     
-    // --- SMART EXPORT (Loop Aware & De-Click) ---
+    // --- EXPORT ---
     function startExport() {
         initAudio();
         const btn = document.getElementById('btnExport');
         const status = document.getElementById('exportStatus');
 
         if(isExporting) {
-            // STOP CLICKED - SMART WAIT
-            
             let maxDuration = 0;
             let targetClip = null;
-
             clips.forEach(c => {
                 if(c.isPlaying && c.buffer.duration > maxDuration) {
                     maxDuration = c.buffer.duration;
@@ -658,27 +678,16 @@
                 const now = audioCtx.currentTime;
                 const elapsed = now - targetClip.startTime;
                 const duration = targetClip.buffer.duration;
-                
-                // Calculate remaining time in loop
                 const remaining = duration - (elapsed % duration);
-
-                // FIX: Stop 50ms (0.05s) BEFORE the loop restarts to avoid click
-                const adjust = remaining - 0.05;
+                const adjust = remaining - 0.05; // Stop slightly early
                 const waitTime = adjust > 0 ? adjust : 0;
-
                 status.innerText = "Finishing loop... (" + waitTime.toFixed(2) + "s)";
                 btn.disabled = true; 
-
-                setTimeout(() => {
-                   finalizeExport(btn, status);
-                }, waitTime * 1000);
-            } else {
-                finalizeExport(btn, status);
-            }
+                setTimeout(() => { finalizeExport(btn, status); }, waitTime * 1000);
+            } else { finalizeExport(btn, status); }
             return;
         }
 
-        // START RECORDING
         masterRecorder = new MediaRecorder(mainDestination.stream);
         masterChunks = [];
         masterRecorder.ondataavailable = e => masterChunks.push(e.data);
