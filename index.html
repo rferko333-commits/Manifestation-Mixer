@@ -236,7 +236,7 @@
     }
 
     // ==========================================
-    // 1. DEVICE SELECTION (Robust)
+    // 1. DEVICE SELECTION
     // ==========================================
     
     async function scanDevices() {
@@ -281,7 +281,6 @@
         try {
             return await navigator.mediaDevices.getUserMedia(constraints);
         } catch (e) {
-            console.warn("Specific device failed, falling back to default.");
             return await navigator.mediaDevices.getUserMedia({ audio: true });
         }
     }
@@ -305,7 +304,6 @@
             testMicNode = audioCtx.createMediaStreamSource(activeStream);
             testMicGain = audioCtx.createGain();
             testMicGain.gain.value = 1.0;
-            
             testMicNode.connect(testMicGain).connect(masterGain);
             
             if(!analyser) analyser = audioCtx.createAnalyser();
@@ -407,7 +405,8 @@
     function addClipToList(buffer) {
         document.getElementById('emptyListMsg').style.display = 'none';
         const id = clipIdCounter++;
-        const clip = { id, buffer, name: `Affirmation ${id}`, isPlaying: false, gainVal: 1.0 };
+        // ADDED startTime property to track loop position
+        const clip = { id, buffer, name: `Affirmation ${id}`, isPlaying: false, gainVal: 1.0, startTime: 0 };
         clips.push(clip);
         renderClipList();
     }
@@ -449,6 +448,10 @@
             
             clip.sourceNode = source;
             clip.gainNode = gain;
+            
+            // SAVE START TIME to align export
+            clip.startTime = audioCtx.currentTime;
+            
             source.start();
             clip.isPlaying = true;
         }
@@ -614,20 +617,51 @@
         if(isEnvPlaying) updateBinaural();
     }
     
+    // --- SMART EXPORT (Loop Aware) ---
     function startExport() {
         initAudio();
         const btn = document.getElementById('btnExport');
         const status = document.getElementById('exportStatus');
 
         if(isExporting) {
-            masterRecorder.stop();
-            isExporting = false;
-            btn.innerText = "💾 Download Master Mix";
-            btn.style.background = "var(--success)";
-            btn.classList.remove('blink');
+            // STOP CLICKED - START SMART WAIT
+            
+            // 1. Find the longest currently playing voice loop
+            let maxDuration = 0;
+            let targetClip = null;
+
+            clips.forEach(c => {
+                if(c.isPlaying && c.buffer.duration > maxDuration) {
+                    maxDuration = c.buffer.duration;
+                    targetClip = c;
+                }
+            });
+
+            if(targetClip) {
+                // 2. Calculate time remaining in this specific loop cycle
+                const now = audioCtx.currentTime;
+                const elapsed = now - targetClip.startTime;
+                const duration = targetClip.buffer.duration;
+                
+                // elapsed % duration = where we are in the current loop (0 to duration)
+                // remaining = duration - position
+                const remaining = duration - (elapsed % duration);
+
+                status.innerText = "Finishing current loop... (" + remaining.toFixed(1) + "s)";
+                btn.disabled = true; // Prevent clicking again
+
+                // 3. Wait exactly that long, then cut
+                setTimeout(() => {
+                   finalizeExport(btn, status);
+                }, remaining * 1000);
+            } else {
+                // No clips playing? Stop immediately.
+                finalizeExport(btn, status);
+            }
             return;
         }
 
+        // START RECORDING
         masterRecorder = new MediaRecorder(mainDestination.stream);
         masterChunks = [];
         masterRecorder.ondataavailable = e => masterChunks.push(e.data);
@@ -636,21 +670,27 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url; 
-            
-            // File Name Logic
             const nameInput = document.getElementById('fileName').value || "manifestation_mix";
             const safeName = nameInput.replace(/[^a-z0-9_\-\.]/gi, '_');
             a.download = safeName + ".wav";
-            
             a.click();
             status.innerText = "Download Started!";
         };
         masterRecorder.start();
         isExporting = true;
-        btn.innerText = "⏹ Stop Recording to Save";
+        btn.innerText = "⏹ Stop (Aligns to Loop)";
         btn.style.background = "var(--danger)";
         btn.classList.add('blink');
-        status.innerText = "Recording Output... Click Stop to save file.";
+        status.innerText = "Recording... Press Stop to finish loop.";
+    }
+
+    function finalizeExport(btn, status) {
+        masterRecorder.stop();
+        isExporting = false;
+        btn.disabled = false;
+        btn.innerText = "💾 Download Master Mix";
+        btn.style.background = "var(--success)";
+        btn.classList.remove('blink');
     }
 </script>
 </body>
